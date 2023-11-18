@@ -1,26 +1,175 @@
 ---
 title: "CSC498H Project Phase I"
-author: Jalal El Zein
+author: Jalal El Zein & Tamer Kobba
 output: html_document
 ---
-
-The [R plugin](https://www.jetbrains.com/help/pycharm/r-plugin-support.html) for IntelliJ-based IDEs provides
-handy capabilities to work with the [R Markdown](https://www.jetbrains.com/help/pycharm/r-markdown.html) files.
-To [add](https://www.jetbrains.com/help/pycharm/r-markdown.html#add-code-chunk) a new R chunk,
+# Introduction
+# Data Exploration
+Load the required libraries
 ```{r}
+library(tidyverse)
+library(ggplot2)
+library(polycor)
+library(caret)
+library(MASS)
+library(cvms)
+library(pROC)
+```
+Read the data from the CSV file
+```{r}
+data <- read.csv("DataAssign2.csv")
+```
+## Exploring the Structure of the Dataset
+Display the structure of the dataset
+```{r}
+str(data)
+```
+## Summary of the Dataset
+Provide a summary of the dataset
+```{r}
+summary(data)
+```
+Let's display the first few rows of the dataset
+```{r}
+head(data)
+```
+We can also provide a concise summary of the dataset with the following
+```{r}
+glimpse(data)
+```
+## Explore Response Variable (V7)
+### Unique Values in V7
+```{r}
+unique(data$V7)
+```
+# Check for missing values in the dataset
+```{r}
+colSums(is.na(data))
+```
+# Display the proportion of each unique value in the response variable (V7)
+```{r}
+prop.table(table(data$V7))
+```
+
+## Categorical Variable Analysis
+### Load Libraries and Read Data
+Plot and Summarize Categorical Variables
+```{r}
+# Function to generate plot and summary for a categorical variable
+plot_and_summary <- function(data, x_var, fill_var, y_var) { # Plot
+  plot <- ggplot(data, aes_string(x = x_var, fill = fill_var)) +
+    geom_bar() +
+    labs(y = y_var, fill = "Acceptability")
+  # Summary
+  summary_table <- data %>%
+    group_by_at(vars(x_var, fill_var)) %>%
+    summarise(count = n()) %>%
+    arrange(across(c(x_var, fill_var)))
+  # Display the plot and return the summary table
+  print(plot)
+  return(summary_table)
+}
 
 ```
-position the caret at any line or the code chunk, then click "+".
-
-The code chunk appears:
+## Display the plot and return the summary table
 ```{r}
+# List of categorical variables
+ categorical_vars <- c("V1", "V2", "V3", "V4", "V5", "V6")
+# Apply the function for each variable
+ results <- lapply(categorical_vars, function(var) {
+plot_and_summary(data, var, "V7", "Count") })
 ```
-
-Type any R code in the chunk, for example:
+Correlation Heatmap for Categorical Variables
 ```{r}
-mycars <- within(mtcars, { cyl <- ordered(cyl) })
-mycars
+# Rename variables for better understanding
+ colnames(data) <- c("Buying_Price", "Maintenance_Price", "Number_of_Doors", "Capacity", "Luggage_Boot_Size", "Estimated_Safety", "Acceptability")
+# Convert all variables to factors data[] <- lapply(data, as.factor)
+ # Explicitly set the order of levels for "Buying_Price"
+data$Buying_Price <- factor(data$Buying_Price, levels = c("low", "med", "high", "vhigh"), ordered = TRUE)
+# Calculate the correlation matrix using hector
+ correlation_result <- hetcor(data)
+# Extract the correlation matrix
+correlation_matrix <- correlation_result$correlations
+# Convert the correlation matrix to a data frame for ggplot
+correlation_df <- as.data.frame(as.table(correlation_matrix))
+# Create a heatmap
+heatmap_plot <- ggplot(data = correlation_df, aes(x = Var1, y = Var2, fill = Freq)) + geom_tile() + labs(title = "Categorical Variable Correlation Heatmap", x = "Variable 1", y = "Variable 2") + scale_fill_gradient2(low = "blue", mid = "white", high = "red", limits = c(-1, 1)) # Print the heatmap print(heatmap_plot)
 ```
+## Findings and Interpretation
+### Overall Findings:
+### Categorical Variables Exploration:
+#### Buying Price (V1):
+The bar plot illustrates the distribution of buying prices for each level of acceptability.
+There is a noticeable variation in counts across different buying price categories for each acceptability level.
 
-Now, click the **Run** button on the chunk toolbar to [execute](https://www.jetbrains.com/help/pycharm/r-markdown.html#run-r-code) the chunk code. The result should be placed under the chunk.
-Click the **Knit and Open Document** to build and preview an output.
+#### Maintenance Price (V2):
+Similar to buying price, the bar plot shows the distribution of maintenance prices for each acceptability level.
+Different maintenance price categories exhibit varying counts across acceptability levels.
+
+#### Number of Doors (V3):
+The bar plot displays the distribution of the number of doors for each acceptability category.
+The counts are relatively evenly distributed among different door numbers for each acceptability level.
+
+#### Capacity (V4):
+The bar plot indicates the distribution of capacity levels concerning acceptability.
+Various capacity levels show distinct counts across different acceptability categories.
+
+#### Luggage Boot Size (V5):
+The bar plot visualizes the distribution of luggage boot sizes for each acceptability level.
+Different sizes exhibit varying counts across acceptability categories.
+
+#### Estimated Safety (V6):
+The bar plot demonstrates the distribution of estimated safety levels for each acceptability category.
+Distinct counts are observed for different safety levels across acceptability categories.
+
+### Correlation Heatmap:
+The correlation matrix reveals the relationships between variables, where each cell represents the correlation coefficient between pairs of variables.
+
+#### Significant Features based on Correlation:
+
+#### Negative Correlation with Acceptability:
+Strong negative correlation with "Buying_Price" (-0.80) and "Estimated_Safety" (-0.40).
+
+#### Positive Correlation with Acceptability:
+Positive correlation with "Capacity" (0.43).
+
+#### Non-Significant Feature:
+"Number_of_Doors" (V3) exhibits a low correlation with other variables, suggesting it may not be a significant predictor.
+
+### Conclusion:
+Features such as `Buying Price`, `Maintenance Price`, `Capacity`, `Luggage Boot Size`, and `Estimated Safety` show potential significance in predicting acceptability.
+`Number_of_Doors` appears less influential based on the low correlation with other variables.
+The strong negative correlation of "`Buying_Price`" and "`Estimated_Safety`" with "`Acceptability`" suggests these features might be crucial predictors.
+
+# Data Splitting
+# Logistic Regression
+# Discriminant Analysis
+We will try 2 methods under this technique, Linear Discriminant Analysis (LDA) and Quadratic Discriminant Analysis (QDA).
+
+## Linear Discriminant Analysis
+### One-Hot Encoding Scheme
+First, we must encode our dataset to feed into the model. In this first part, we will resort to one-hot encoding.
+We will perform our encoding using the `dummyVars` function from `caret`.
+```{r}
+# cat_dataset <- dummyVars("~ . - V7 - V3 - V4", data=data)
+# enc_dataset <- data.frame(predict(cat_dataset, data))
+```
+In this code chunk, we apply `dummyVars` to encode all features from our raw dataset excluding the response variable `V7` and the two non-important features, `V3` and `V4`. After that we simply assign the results of these encodings to a new dataset variable.
+
+Next, we will create separate variables for training and testing data for clarity, ease of use, and readability of our code.
+```{r}
+# train_data_X <- enc_dataset[train_indices,]
+# test_data_X <- enc_dataset[-train_indices,]
+# train_data_Y <- data$V7[train_indices]
+# test_data_Y <- data$V7[-train_indices]
+```
+Now we fit the model using the `lda` function, passing in `train_data_Y` and `train_data_X`, then
+### Ordinal Encoding Scheme
+## Quadratic Discriminant Analysis
+## LDA vs QDA
+# k-Nearest Neighbors
+# Resampling
+## 5-Fold Cross Validation
+## Bootstrapping
+## 5-Fold Cross Validation vs Validation Set
+# Conclusion
