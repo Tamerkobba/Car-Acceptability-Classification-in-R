@@ -1,7 +1,7 @@
 
 library(ggplot2)
 library(pROC)
-
+library(cvms)
 data <- read.csv("DataAssign2.csv")
 data$V7_binary <- ifelse(data$V7 == 'good', 1, 0)
 
@@ -9,7 +9,7 @@ data$V7_binary <- ifelse(data$V7 == 'good', 1, 0)
 set.seed(123)
 
 # Generate random indices for the training set, equivalent to an 80-20 split
-train_indices <- sample(1:nrow(data), nrow(data) * 0.8)
+train_indices <- sample(1:nrow(data), nrow(data) * 0.75)
 
 # Create the training set using the sampled indices
 train_data <- data[train_indices, ]
@@ -21,7 +21,7 @@ test_data <- data[-train_indices, ]
 data$V7_binary <- ifelse(data$V7 == 'good', 1, 0)
 
 # Fit the logistic regression model using V7_binary as the response variable
-model <- glm(formula = V7_binary ~ V6 + V2 + V1 + V5, data = train_data, family = binomial)
+model <- glm(formula = V7_binary ~ V1+V2+V5+V6 , data = train_data, family = binomial)
 
 # Print the summary of the model
 summary(model)
@@ -32,16 +32,15 @@ predictions <- predict(model, newdata = test_data, type = "response")
 # Convert probabilities to class predictions (0 or 1)
 predicted_classes <- ifelse(predictions > 0.5, 1, 0)
 
-# Create a confusion matrix
-conf_matrix <- table(Actual = test_data$V7_binary, Predicted = predicted_classes)
-# Convert the confusion matrix to a data frame
-conf_matrix_df <- as.data.frame.matrix(conf_matrix)
+# Create a confusion matrix using cvms package
+confusion_matrix <- cvms::confusion_matrix(targets = test_data$V7_binary, predictions = predicted_classes)
+
 # Plot the confusion matrix
-print(conf_matrix)
+plot_confusion_matrix(confusion_matrix$`Confusion Matrix`[[1]])
 # Calculate the accuracy
 accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
 
-cat(paste("Accuracy:", accuracy * 100))
+cat(paste("Accuracy:", accuracy ))
 
 # Calculate precision, recall, and F1 score for each class
 precision <- conf_matrix[2, 2] / sum(conf_matrix[, 2])
