@@ -1,3 +1,5 @@
+library(dplyr)
+
 # Read the data from the CSV file
 data <- read.csv("DataAssign2.csv")
 

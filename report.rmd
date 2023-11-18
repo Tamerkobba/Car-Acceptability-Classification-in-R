@@ -1,0 +1,308 @@
+---
+title: "CSC498H Project Phase I"
+author: Jalal El Zein & Tamer Kobba
+output: html_document
+---
+# Introduction
+# Data Exploration
+Load the required libraries
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(polycor)
+library(caret)
+library(MASS)
+library(cvms)
+library(pROC)
+```
+Read the data from the CSV file
+```{r}
+data <- read.csv("DataAssign2.csv")
+```
+## Exploring the Structure of the Dataset
+Display the structure of the dataset
+```{r}
+str(data)
+```
+## Summary of the Dataset
+Provide a summary of the dataset
+```{r}
+summary(data)
+```
+Let's display the first few rows of the dataset
+```{r}
+head(data)
+```
+We can also provide a concise summary of the dataset with the following
+```{r}
+glimpse(data)
+```
+## Explore Response Variable (V7)
+### Unique Values in V7
+```{r}
+unique(data$V7)
+```
+# Check for missing values in the dataset
+```{r}
+colSums(is.na(data))
+```
+# Display the proportion of each unique value in the response variable (V7)
+```{r}
+prop.table(table(data$V7))
+```
+
+## Categorical Variable Analysis
+### Load Libraries and Read Data
+Plot and Summarize Categorical Variables
+```{r}
+# Function to generate plot and summary for a categorical variable
+plot_and_summary <- function(data, x_var, fill_var, y_var) { # Plot
+  plot <- ggplot(data, aes_string(x = x_var, fill = fill_var)) +
+    geom_bar() +
+    labs(y = y_var, fill = "Acceptability")
+  # Summary
+  summary_table <- data %>%
+    group_by_at(vars(x_var, fill_var)) %>%
+    summarise(count = n()) %>%
+    arrange(across(c(x_var, fill_var)))
+  # Display the plot and return the summary table
+  print(plot)
+  return(summary_table)
+}
+
+```
+## Display the plot and return the summary table
+```{r}
+# List of categorical variables
+ categorical_vars <- c("V1", "V2", "V3", "V4", "V5", "V6")
+# Apply the function for each variable
+ results <- lapply(categorical_vars, function(var) {
+plot_and_summary(data, var, "V7", "Count") })
+```
+Correlation Heatmap for Categorical Variables
+```{r}
+# Rename variables for better understanding
+ colnames(data) <- c("Buying_Price", "Maintenance_Price", "Number_of_Doors", "Capacity", "Luggage_Boot_Size", "Estimated_Safety", "Acceptability")
+# Convert all variables to factors data[] <- lapply(data, as.factor)
+ # Explicitly set the order of levels for "Buying_Price"
+data$Buying_Price <- factor(data$Buying_Price, levels = c("low", "med", "high", "vhigh"), ordered = TRUE)
+# Calculate the correlation matrix using hector
+ correlation_result <- hetcor(data)
+# Extract the correlation matrix
+correlation_matrix <- correlation_result$correlations
+# Convert the correlation matrix to a data frame for ggplot
+correlation_df <- as.data.frame(as.table(correlation_matrix))
+# Create a heatmap
+heatmap_plot <- ggplot(data = correlation_df, aes(x = Var1, y = Var2, fill = Freq)) + geom_tile() + labs(title = "Categorical Variable Correlation Heatmap", x = "Variable 1", y = "Variable 2") + scale_fill_gradient2(low = "blue", mid = "white", high = "red", limits = c(-1, 1)) # Print the heatmap print(heatmap_plot)
+```
+## Findings and Interpretation
+### Overall Findings:
+### Categorical Variables Exploration:
+#### Buying Price (V1):
+The bar plot illustrates the distribution of buying prices for each level of acceptability.
+There is a noticeable variation in counts across different buying price categories for each acceptability level.
+
+#### Maintenance Price (V2):
+Similar to buying price, the bar plot shows the distribution of maintenance prices for each acceptability level.
+Different maintenance price categories exhibit varying counts across acceptability levels.
+
+#### Number of Doors (V3):
+The bar plot displays the distribution of the number of doors for each acceptability category.
+The counts are relatively evenly distributed among different door numbers for each acceptability level.
+
+#### Capacity (V4):
+The bar plot indicates the distribution of capacity levels concerning acceptability.
+Various capacity levels show distinct counts across different acceptability categories.
+
+#### Luggage Boot Size (V5):
+The bar plot visualizes the distribution of luggage boot sizes for each acceptability level.
+Different sizes exhibit varying counts across acceptability categories.
+
+#### Estimated Safety (V6):
+The bar plot demonstrates the distribution of estimated safety levels for each acceptability category.
+Distinct counts are observed for different safety levels across acceptability categories.
+
+### Correlation Heatmap:
+The correlation matrix reveals the relationships between variables, where each cell represents the correlation coefficient between pairs of variables.
+
+#### Significant Features based on Correlation:
+
+#### Negative Correlation with Acceptability:
+Strong negative correlation with "Buying_Price" (-0.80) and "Estimated_Safety" (-0.40).
+
+#### Positive Correlation with Acceptability:
+Positive correlation with "Capacity" (0.43).
+
+#### Non-Significant Feature:
+"Number_of_Doors" (V3) exhibits a low correlation with other variables, suggesting it may not be a significant predictor.
+
+### Conclusion:
+Features such as `Buying Price`, `Maintenance Price`, `Capacity`, `Luggage Boot Size`, and `Estimated Safety` show potential significance in predicting acceptability.
+`Number_of_Doors` appears less influential based on the low correlation with other variables.
+The strong negative correlation of "`Buying_Price`" and "`Estimated_Safety`" with "`Acceptability`" suggests these features might be crucial predictors.
+
+# Data Splitting
+# Logistic Regression
+# Discriminant Analysis
+We will try 2 methods under this technique, Linear Discriminant Analysis (LDA) and Quadratic Discriminant Analysis (QDA).
+
+## Linear Discriminant Analysis
+### One-Hot Encoding Scheme
+First, we must encode our dataset to feed into the model. In this first part, we will resort to one-hot encoding.
+We will perform our encoding using the `dummyVars` function from `caret`.
+```{r}
+cat_dataset <- dummyVars("~ . - Acceptability - Number_of_Doors - Capacity", data=data)
+enc_dataset <- data.frame(predict(cat_dataset, data))
+```
+In this code chunk, we apply `dummyVars` to encode all features from our raw dataset excluding the response variable `V7` and the two non-important features, `V3` and `V4`. After that we simply assign the results of these encodings to a new dataset variable.
+
+```{r}
+set.seed(123)
+train_indices <- sample(1:nrow(data), nrow(data) * 0.75)
+```
+
+Next, we will create separate variables for training and testing data for clarity, ease of use, and readability of our code.
+```{r}
+train_data_X <- enc_dataset[train_indices,]
+test_data_X <- enc_dataset[-train_indices,]
+train_data_Y <- data$Acceptability[train_indices]
+test_data_Y <- data$Acceptability[-train_indices]
+```
+Now we fit the model using the `lda` function, passing in `train_data_Y` and `train_data_X`, then examining a summary of the model
+```{r}
+lda_model <- lda(train_data_Y ~ ., data=train_data_X)
+print(lda_model)
+```
+We can now use this model to predict acceptability of new observations, as in the testing split
+```{r}
+lda_preds <- predict(lda_model, test_data_X)
+```
+Let's extract the classes from our predictions
+```{r}
+lda_classes <- lda_preds$class
+```
+We'll also make a dummy variable `actual` from `test_data_Y` for clarity
+```{r}
+actual <- test_data_Y
+```
+Onto creating the confusion matrix:
+```{r}
+lda_confusion_matrix <- cvms::confusion_matrix(targets = lda_classes, predictions = actual)
+plot_confusion_matrix(lda_confusion_matrix$`Confusion Matrix`[[1]])
+```
+Let's examine in detail some metrics for this fit:
+```{r}
+lda_confusion_matrix$`Balanced Accuracy`
+```
+We can see our model displays an accuracy of `95.83%` which is great.
+We can also check out our Precision (Sensitivity) and Recall (Specificity), as well as their harmonic mean, the F1 Score
+```{r}
+print(lda_confusion_matrix$Sensitivity)
+print(lda_confusion_matrix$Specificity)
+print(lda_confusion_matrix$F1)
+```
+
+### Ordinal Encoding Scheme
+We should also try alternate encoding schemes, such as ordinal encoding, where we assume categories have a natural order. This assumption holds true in this dataset, which is why we may use this encoding. We can perform this encoding using a combination of `factor` and `as.numeric` on our row data, one column at a time.
+```{r}
+ord_dataset <- data
+ord_dataset$V1 <- as.numeric(factor(data$Buying_Price))
+ord_dataset$V2 <- as.numeric(factor(data$Maintenance_Price))
+ord_dataset$V3 <- as.numeric(factor(data$Number_of_Doors))
+ord_dataset$V4 <- as.numeric(factor(data$Capacity))
+ord_dataset$V5 <- as.numeric(factor(data$Luggage_Boot_Size))
+ord_dataset$V6 <- as.numeric(factor(data$Estimated_Safety))
+ord_dataset$V7 <- data$Acceptability
+```
+```{r}
+ord_data_X <- ord_dataset[c("V1", "V2", "V5", "V6")] # pick features here
+ord_data_y <- ord_dataset["V7"]
+ord_train_data_X <- ord_data_X[train_indices, ]
+ord_train_data_y <- ord_data_y$V7[train_indices]
+ord_test_data_X <- ord_data_X[-train_indices, ]
+ord_test_data_y <- ord_data_y$V7[-train_indices]
+```
+Let's fit another LDA model on this dataset
+```{r}
+lda_ord_model <- lda(ord_train_data_y ~ ., data=ord_train_data_X)
+print(lda_ord_model)
+```
+Similarly, let's find the predictions, classes, and create a new confusion matrix
+```{r}
+lda_ord_predictions <- predict(lda_ord_model, ord_test_data_X)
+lda_ord_classes <- lda_ord_predictions$class
+lda_ord_confusion_matrix <- cvms::confusion_matrix(targets = lda_ord_classes, predictions = actual)
+plot_confusion_matrix(lda_ord_confusion_matrix$`Confusion Matrix`[[1]])
+```
+
+Let's examine in detail some metrics for this fit:
+```{r}
+lda_ord_confusion_matrix$`Balanced Accuracy`
+```
+We can see our model displays an accuracy of `81.53%` which is decent, but a step-down from one-hot encoding. Moving on to the rest of the metrics:
+```{r}
+print(lda_ord_confusion_matrix$Sensitivity)
+print(lda_ord_confusion_matrix$Specificity)
+print(lda_ord_confusion_matrix$F1)
+```
+We see the different encodings had a significant impact on LDA's performance as we notice a drop in all metrics by approximately 14% on average.
+
+## Quadratic Discriminant Analysis
+
+### One-Hot Encoding
+For QDA, using one-hot encoding resulted in rank deficiencies in the dataset and prevented the model for fitting
+
+### Ordinal Encoding
+For this part, we can reuse the same data from Ordinal Encoding for LDA and fit on a `qda` model:
+```{r}
+qda_model <- qda(ord_train_data_y ~ ., data=ord_train_data_X)
+```
+To observe which predictors seem significant in QDA, we can examine the differnece of the means for each class and group. A relatively large difference in the means for each class points to significant features (those that facilitate clean separation of observations) and the opposite is true.
+```{r}
+mean_diffs <- abs(diff(qda_model$means))
+mean_diffs
+```
+We can see here, that `V1` (Buying Price) seems to be doing a better job than the other features at separating `good` and `bad` cars!
+
+Let's now use this model to predict on our test data and check out some metrics!
+```{r}
+qda_predictions <- predict(qda_model, ord_test_data_X)
+qda_pred_classes <- qda_predictions$class
+```
+We need to modify `actual` classes slightly here because of some type inconsistencies due to the outputs of QDA model
+```{r}
+actual <- as.factor(actual)
+```
+Now we can create the confusion matrix as usual
+```{r}
+qda_confusion_matrix <- cvms::confusion_matrix(targets = qda_pred_classes, predictions = actual)
+plot_confusion_matrix(qda_confusion_matrix$`Confusion Matrix`[[1]])
+```
+
+Here are the metrics for this model:
+```{r}
+print(qda_confusion_matrix$`Balanced Accuracy`)
+print(qda_confusion_matrix$Sensitivity)
+print(qda_confusion_matrix$Specificity)
+print(qda_confusion_matrix$F1)
+```
+QDA seems to perform significantly better than LDA given ordinal encoding of the features
+
+## LDA vs QDA
+First, let's see LDA's ROC Curve. To compute these curves, we will be using the `roc` function from `pROC`
+```{r}
+lda_roc_obj <- roc(response=test_data_Y, predictor=lda_preds$posterior[,2])
+plot(lda_roc_obj, print.auc = TRUE, print.thres = TRUE, print.auc.y = 0.2)
+```
+As for QDA:
+```{r}
+qda_roc_obj <- roc(response = ord_test_data_y, predictor = qda_predictions$posterior[,2])
+plot(qda_roc_obj, print.auc=TRUE, print.thes=TRUE, print.auc.y=0.2)
+```
+
+# k-Nearest Neighbors
+# Resampling
+## 5-Fold Cross Validation
+## Bootstrapping
+## 5-Fold Cross Validation vs Validation Set
+# Conclusion

@@ -3,7 +3,7 @@ library(tidyverse)
 
 
 # Read the data from the CSV file
-data <- read_csv("DataAssign2.csv")
+data <- read.csv("DataAssign2.csv")
 
 
 # Function to generate plot and summary for a categorical variable
