@@ -2,7 +2,7 @@
 library(tidyverse)
 
 # Read the data from the CSV file
-data <- read_csv("DataAssign2.csv")
+data <- read.csv("DataAssign2.csv")
 
 # Explore the association between the response variable and other features
 # Plotting the response variable against each feature using bar plots

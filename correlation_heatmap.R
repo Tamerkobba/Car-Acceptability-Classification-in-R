@@ -11,7 +11,6 @@ colnames(data) <- c("Buying_Price", "Maintenance_Price", "Number_of_Doors",
 # Convert all variables to factors
 data[] <- lapply(data, as.factor)
 
-
 # Calculate the correlation matrix using hetcor
 correlation_result <- hetcor(data)
 
