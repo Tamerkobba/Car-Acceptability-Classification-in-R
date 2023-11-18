@@ -150,6 +150,7 @@ The strong negative correlation of "`Buying_Price`" and "`Estimated_Safety`" wit
 In this section, the dataset was split into training and test sets using a random seed for reproducibility. Approximately 75% of the data was assigned to the training set, and the remaining 25% constituted the test set. NOTE: We tested multiple splits and one specific seed (965) which we found by chance to get give us suspiciously perfect prediction of all different models our findings were documented as well on a spreadsheet that we included
 
 ```{r}
+data <- read.csv("DataAssign2.csv")
 set.seed(123)
 data$V7_binary <- ifelse(data$V7 == 'good', 1, 0)
 train_indices <- sample(1:nrow(data), nrow(data) * 0.75)
@@ -244,7 +245,7 @@ We will try 2 methods under this technique, Linear Discriminant Analysis (LDA) a
 First, we must encode our dataset to feed into the model. In this first part, we will resort to one-hot encoding.
 We will perform our encoding using the `dummyVars` function from `caret`.
 ```{r}
-cat_dataset <- dummyVars("~ . - Acceptability - Number_of_Doors - Capacity", data = data)
+cat_dataset <- dummyVars("~ . - V7 - V3 - V4", data = data)
 enc_dataset <- data.frame(predict(cat_dataset, data))
 ```
 In this code chunk, we apply `dummyVars` to encode all features from our raw dataset excluding the response variable `V7` and the two non-important features, `V3` and `V4`. After that we simply assign the results of these encodings to a new dataset variable.
@@ -410,6 +411,28 @@ data_dummy <- data.frame(predict(data_dummy, newdata = selected_columns))
 # Display the structure of the new data frame
 str(data_dummy)
 
+# Set seed for reproducibility
+set.seed(123)
+
+# Define the sample size for training data
+samplesize1 <- round(0.75 * nrow(data_dummy), 0)
+
+# Create indices for training data
+index1 <- sample(seq_len(nrow(data_dummy)), size = samplesize1)
+
+
+
+# Create training and testing datasets
+kn_train <- data_dummy[index1, ]
+
+str(kn_train)
+
+kn_test <- data_dummy[-index1, ]
+
+
+# Create training and testing labels (response variable V7)
+kn_train_label <- selected_columns$V7[index1]
+kn_test_label <- selected_columns$V7[-index1]
 ```
 
 ## Data Splitting
