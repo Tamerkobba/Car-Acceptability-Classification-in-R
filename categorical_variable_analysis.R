@@ -1,11 +1,9 @@
 # Load the required libraries
 library(tidyverse)
 
+
 # Read the data from the CSV file
 data <- read.csv("DataAssign2.csv")
-
-# Explore the association between the response variable and other features
-# Plotting the response variable against each feature using bar plots
 
 
 # Function to generate plot and summary for a categorical variable
@@ -33,6 +31,4 @@ categorical_vars <- c("V1", "V2", "V3", "V4", "V5", "V6")
 results <- lapply(categorical_vars, function(var) {
   plot_and_summary(data, var, "V7", "Count")
 })
-
-
 
