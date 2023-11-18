@@ -14,6 +14,8 @@ library(caret)
 library(MASS)
 library(cvms)
 library(pROC)
+library(boot)
+library(class)
 ```
 Read the data from the CSV file
 ```{r}
@@ -74,26 +76,29 @@ plot_and_summary <- function(data, x_var, fill_var, y_var) { # Plot
 ## Display the plot and return the summary table
 ```{r}
 # List of categorical variables
- categorical_vars <- c("V1", "V2", "V3", "V4", "V5", "V6")
+categorical_vars <- c("V1", "V2", "V3", "V4", "V5", "V6")
 # Apply the function for each variable
- results <- lapply(categorical_vars, function(var) {
-plot_and_summary(data, var, "V7", "Count") })
+results <- lapply(categorical_vars, function(var) {
+  plot_and_summary(data, var, "V7", "Count") })
 ```
 Correlation Heatmap for Categorical Variables
 ```{r}
 # Rename variables for better understanding
- colnames(data) <- c("Buying_Price", "Maintenance_Price", "Number_of_Doors", "Capacity", "Luggage_Boot_Size", "Estimated_Safety", "Acceptability")
+colnames(data) <- c("Buying_Price", "Maintenance_Price", "Number_of_Doors", "Capacity", "Luggage_Boot_Size", "Estimated_Safety", "Acceptability")
 # Convert all variables to factors data[] <- lapply(data, as.factor)
- # Explicitly set the order of levels for "Buying_Price"
+# Explicitly set the order of levels for "Buying_Price"
 data$Buying_Price <- factor(data$Buying_Price, levels = c("low", "med", "high", "vhigh"), ordered = TRUE)
 # Calculate the correlation matrix using hector
- correlation_result <- hetcor(data)
+correlation_result <- hetcor(data)
 # Extract the correlation matrix
 correlation_matrix <- correlation_result$correlations
 # Convert the correlation matrix to a data frame for ggplot
 correlation_df <- as.data.frame(as.table(correlation_matrix))
 # Create a heatmap
-heatmap_plot <- ggplot(data = correlation_df, aes(x = Var1, y = Var2, fill = Freq)) + geom_tile() + labs(title = "Categorical Variable Correlation Heatmap", x = "Variable 1", y = "Variable 2") + scale_fill_gradient2(low = "blue", mid = "white", high = "red", limits = c(-1, 1)) # Print the heatmap print(heatmap_plot)
+heatmap_plot <- ggplot(data = correlation_df, aes(x = Var1, y = Var2, fill = Freq)) +
+  geom_tile() +
+  labs(title = "Categorical Variable Correlation Heatmap", x = "Variable 1", y = "Variable 2") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", limits = c(-1, 1)) # Print the heatmap print(heatmap_plot)
 ```
 ## Findings and Interpretation
 ### Overall Findings:
@@ -142,7 +147,95 @@ Features such as `Buying Price`, `Maintenance Price`, `Capacity`, `Luggage Boot 
 The strong negative correlation of "`Buying_Price`" and "`Estimated_Safety`" with "`Acceptability`" suggests these features might be crucial predictors.
 
 # Data Splitting
+In this section, the dataset was split into training and test sets using a random seed for reproducibility. Approximately 75% of the data was assigned to the training set, and the remaining 25% constituted the test set. NOTE: We tested multiple splits and one specific seed (965) which we found by chance to get give us suspiciously perfect prediction of all different models our findings were documented as well on a spreadsheet that we included
+
+```{r}
+set.seed(123)
+train_indices <- sample(1:nrow(data), nrow(data) * 0.75)
+train_data <- data[train_indices,]
+test_data <- data[-train_indices,]
+```
+
+# Multicollinearity Analysis using Chi-Squared Test
+We had a suspicion that some features might be too related, impacting our model's performance. Specifically, we focused on V4 because it gave worse prediction when I included it in the model. Here's the breakdown
+```{r}
+# Read the data from "DataAssign2.csv"
+data <- read.csv("DataAssign2.csv")
+# Convert all columns to factor variables
+data[] <- lapply(data, as.factor)
+# Function to calculate the p-value for the chi-square test between two categorical variables
+calculate_chi_square <- function(var1, var2) {
+  # Create a contingency table for the two variables
+  contingency_table <- table(data[[var1]], data[[var2]])
+  # Perform the chi-square test and retrieve the p-value
+  chi_square_result <- chisq.test(contingency_table)
+  return(chi_square_result$p.value)
+}
+# Create a matrix to store chi-square test results
+chi_square_results <- matrix(NA, ncol = ncol(data), nrow = ncol(data))
+rownames(chi_square_results) <- colnames(chi_square_results) <- colnames(data)
+# Loop through all pairs of variables and calculate chi-square test p-values
+for (i in 1:(ncol(data) - 1)) {
+  for (j in (i + 1):ncol(data)) {
+    # Get the names of the variables for the current pair
+    var1 <- colnames(data)[i]
+    var2 <- colnames(data)[j]
+    # Calculate the chi-square p-value and store it in the matrix
+    result <- calculate_chi_square(var1, var2)
+    chi_square_results[var1, var2] <- chi_square_results[var2, var1] <- result
+  }
+}
+# Print the matrix of chi-square test p-values
+print(chi_square_results)
+```
+
+The chi-squared test results revealed significant associations between V4 and V1 (p-value = 1.33e-04). This supports the suspicion of multicollinearity between these two variables. So we did not include in the model.
+
 # Logistic Regression
+A logistic regression model was fitted using the training data, aiming to predict the binary response variable V7_binary based on predictor variables V1, V2, V5, and V6 without V4 because when tested with V4 we got worse performance on all metrics . Below is the summary output of the model:
+```{r}
+data$V7_binary <- ifelse(data$V7 == 'good', 1, 0)
+model <- glm(formula = V7_binary ~ V1 + V2 + V5 + V6, data = train_data, family = binomial)
+summary(model)
+```
+
+Model Coefficients
+The coefficients table provides estimates for each predictor variable. For example:
+- Buying_Pricelow: Estimated coefficient of -5.3785, standard error 0.8802, z-value -6.110, and p-value 9.94e-10.
+- Buying_Pricemed: Estimated coefficient of -3.8459, standard error 0.7713, z-value -4.986, and p-value 6.15e-07.
+- Buying_Pricevhigh: Estimated coefficient of 2.6234, standard error 0.6476, z-value 4.051, and p-value 5.10e-05.
+
+These coefficients represent the impact of each predictor on the log-odds of the response variable when other predictors are held constant.
+
+## Predict - Model Evaluation Findings
+Upon evaluating the logistic regression model on the test set, the following performance metrics were obtained:
+
+```{r}
+# Predict on the test set
+predictions <- predict(model, newdata = test_data, type = "response")
+# Convert probabilities to class predictions (0 or 1)
+predicted_classes <- ifelse(predictions > 0.5, 1, 0)
+# Create a confusion matrix using cvms package
+confusion_matrix <- cvms::confusion_matrix(targets = test_data$V7_binary, predictions = predicted_classes)
+# Plot the confusion matrix
+plot_confusion_matrix(confusion_matrix$`Confusion Matrix`[[1]])
+
+```
+
+## Confusion Matrix
+Key Findings:
+- True Positives (1,1): 1
+- True Negatives (0,0): 29
+- False Positives (0,1): 0
+- False Negatives (1,0): 0
+- Accuracy: The model achieved perfect accuracy with a value of 1, indicating that all predictions were correct.
+- Precision and Recall: Both precision and recall for the positive class (accepted cars) are 1, suggesting that the model correctly identified all positive instances without any false positives or false negatives.
+- F1 Score: The F1 score, which balances precision and recall, is also 1, highlighting the model's excellent performance in correctly classifying positive instances.
+- AUC: The area under the ROC curve (AUC) was found to be 0.9773, indicating high discriminative power and the model's ability to distinguish between the two classes.
+
+These findings collectively suggest that the logistic regression model performed exceptionally well in predicting car acceptability on the test set, demonstrating high accuracy and precision.
+
+
 # Discriminant Analysis
 We will try 2 methods under this technique, Linear Discriminant Analysis (LDA) and Quadratic Discriminant Analysis (QDA).
 
@@ -151,7 +244,7 @@ We will try 2 methods under this technique, Linear Discriminant Analysis (LDA) a
 First, we must encode our dataset to feed into the model. In this first part, we will resort to one-hot encoding.
 We will perform our encoding using the `dummyVars` function from `caret`.
 ```{r}
-cat_dataset <- dummyVars("~ . - Acceptability - Number_of_Doors - Capacity", data=data)
+cat_dataset <- dummyVars("~ . - Acceptability - Number_of_Doors - Capacity", data = data)
 enc_dataset <- data.frame(predict(cat_dataset, data))
 ```
 In this code chunk, we apply `dummyVars` to encode all features from our raw dataset excluding the response variable `V7` and the two non-important features, `V3` and `V4`. After that we simply assign the results of these encodings to a new dataset variable.
@@ -170,7 +263,7 @@ test_data_Y <- data$Acceptability[-train_indices]
 ```
 Now we fit the model using the `lda` function, passing in `train_data_Y` and `train_data_X`, then examining a summary of the model
 ```{r}
-lda_model <- lda(train_data_Y ~ ., data=train_data_X)
+lda_model <- lda(train_data_Y ~ ., data = train_data_X)
 print(lda_model)
 ```
 We can now use this model to predict acceptability of new observations, as in the testing split
@@ -217,14 +310,14 @@ ord_dataset$V7 <- data$Acceptability
 ```{r}
 ord_data_X <- ord_dataset[c("V1", "V2", "V5", "V6")] # pick features here
 ord_data_y <- ord_dataset["V7"]
-ord_train_data_X <- ord_data_X[train_indices, ]
+ord_train_data_X <- ord_data_X[train_indices,]
 ord_train_data_y <- ord_data_y$V7[train_indices]
-ord_test_data_X <- ord_data_X[-train_indices, ]
+ord_test_data_X <- ord_data_X[-train_indices,]
 ord_test_data_y <- ord_data_y$V7[-train_indices]
 ```
 Let's fit another LDA model on this dataset
 ```{r}
-lda_ord_model <- lda(ord_train_data_y ~ ., data=ord_train_data_X)
+lda_ord_model <- lda(ord_train_data_y ~ ., data = ord_train_data_X)
 print(lda_ord_model)
 ```
 Similarly, let's find the predictions, classes, and create a new confusion matrix
@@ -255,7 +348,7 @@ For QDA, using one-hot encoding resulted in rank deficiencies in the dataset and
 ### Ordinal Encoding
 For this part, we can reuse the same data from Ordinal Encoding for LDA and fit on a `qda` model:
 ```{r}
-qda_model <- qda(ord_train_data_y ~ ., data=ord_train_data_X)
+qda_model <- qda(ord_train_data_y ~ ., data = ord_train_data_X)
 ```
 To observe which predictors seem significant in QDA, we can examine the differnece of the means for each class and group. A relatively large difference in the means for each class points to significant features (those that facilitate clean separation of observations) and the opposite is true.
 ```{r}
@@ -291,18 +384,157 @@ QDA seems to perform significantly better than LDA given ordinal encoding of the
 ## LDA vs QDA
 First, let's see LDA's ROC Curve. To compute these curves, we will be using the `roc` function from `pROC`
 ```{r}
-lda_roc_obj <- roc(response=test_data_Y, predictor=lda_preds$posterior[,2])
+lda_roc_obj <- roc(response = test_data_Y, predictor = lda_preds$posterior[, 2])
 plot(lda_roc_obj, print.auc = TRUE, print.thres = TRUE, print.auc.y = 0.2)
 ```
 As for QDA:
 ```{r}
-qda_roc_obj <- roc(response = ord_test_data_y, predictor = qda_predictions$posterior[,2])
-plot(qda_roc_obj, print.auc=TRUE, print.thes=TRUE, print.auc.y=0.2)
+qda_roc_obj <- roc(response = ord_test_data_y, predictor = qda_predictions$posterior[, 2])
+plot(qda_roc_obj, print.auc = TRUE, print.thes = TRUE, print.auc.y = 0.2)
 ```
 
+LDA displays slightly better AUC than QDA, but it is worth noting that this is not too meaningful because both models would be perfect if we change the split of the data according to a different seed (`965`)
+
 # k-Nearest Neighbors
+##  Pre-processing Data
+In the pre-processing step, we prepare the data for K-Nearest Neighbors (KNN) classification. Since KNN cannot directly handle categorical predictors, we create dummy variables from categorical data. This involves converting categorical variables into a format that can be used in classification by assigning binary values (0 or 1) to different categories.
+
+```{r}
+# Select columns V1, V2, V5, V6, and V7
+selected_columns <- data[, c("V1", "V2", "V5", "V6", "V7")]
+
+# Create dummy variables
+data_dummy <- dummyVars(" ~ .", data = selected_columns)
+data_dummy <- data.frame(predict(data_dummy, newdata = selected_columns))
+
+# Display the structure of the new data frame
+str(data_dummy)
+
+```
+
+## Data Splitting
+In this step, we split the data into training and testing sets. The seed is set for reproducibility, and approximately 75% of the data is used for training. The remaining data will be used for testing the performance of the KNN model.
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Define the sample size for training data
+samplesize1 <- round(0.75 * nrow(data_dummy), 0)
+
+# Create indices for training data
+index1 <- sample(seq_len(nrow(data_dummy)), size = samplesize1)
+
+# Create training and testing datasets
+kn_train <- data_dummy[index1,]
+kn_test <- data_dummy[-index1,]
+
+# Create training and testing labels (response variable V7)
+kn_train_label <- selected_columns$V7[index1]
+kn_test_label <- selected_columns$V7[-index1]
+
+```
+
+## Running KNN
+### Finding Optimal K
+```{r}
+# Define a range of K values
+k_values <- seq(1, 100, by = 1)
+
+# Initialize a vector to store test errors
+test_errors <- numeric(length(k_values))
+
+# Perform KNN for each K value
+for (k in k_values) {
+  # Perform k-nearest neighbors classification
+  pred_knn <- knn(train = kn_train, test = kn_test, cl = kn_train_label, k = k)
+
+  # Create a confusion matrix
+  conf_matrix <- confusionMatrix(table(pred_knn, kn_test_label))
+
+  # Calculate accuracy (test error)
+  accuracy <- conf_matrix$overall["Accuracy"]
+  test_errors[k] <- 1 - accuracy
+}
+
+# Plot test errors for different values of K
+plot(k_values, test_errors, type = "b", pch = 19, col = "steelblue",
+     xlab = "Number of Neighbors (K)", ylab = "Test Error",
+     main = "Test Error vs. Number of Neighbors")
+
+# Identify the K value with the minimum test error
+min_error_index <- which.min(test_errors)
+min_error_k <- k_values[min_error_index]
+
+# Highlight the point with the minimum test error
+points(min_error_k, test_errors[min_error_index], col = "red", pch = 19)
+
+# Print the minimum test error and the corresponding K value
+cat("Minimum Test Error:", round(test_errors[min_error_index], 4), "\n")
+cat("Optimal K value:", min_error_k, "\n")
+
+```
+
+### Running on Optimal K
+```{r}
+# Perform k-nearest neighbors classification with the optimal K value
+k_value_chosen <- min_error_k
+pred_knn <- knn(train = kn_train, test = kn_test, cl = kn_train_label, k = k_value_chosen)
+
+# Create a confusion matrix
+conf_matrix <- confusionMatrix(table(pred_knn, kn_test_label))
+print(conf_matrix)
+
+# Calculate precision, recall, and F1 score
+precision <- conf_matrix$byClass['Precision']
+recall <- conf_matrix$byClass['Recall']
+f1_score <- conf_matrix$byClass['F1']
+cat("Precision:", precision, "\n")
+cat("Recall:", recall, "\n")
+cat("F1 Score:", f1_score, "\n")
+
+# Create V7_binary in kn_test based on predictions
+kn_test$V7_binary <- ifelse(pred_knn == "bad", "Bad", "Good")
+
+# Define object to plot and calculate AUC
+rocobj <- roc(as.factor(kn_test$V7_binary), as.numeric(pred_knn))
+
+# Calculate AUC
+auc <- round(auc(rocobj), 4)
+
+# Create ROC plot using ggroc from pROC
+ggroc(rocobj, colour = 'steelblue', size = 2) +
+  ggtitle(paste0('ROC Curve ', '(AUC = ', auc, ')')) +
+  theme_minimal()
+
+```
+
+In the pre-processing step, we transformed categorical predictors into dummy variables. The data was then split into training and testing sets. The optimal number of neighbors (K) was determined by evaluating test errors for different K values. The final KNN model was run using the optimal K, and its performance was assessed using a confusion matrix, precision, recall, F1 score, and an ROC curve with AUC. The model achieved perfect precision, recall, and F1 score, indicating excellent performance. The ROC curve had an AUC of 1, indicating perfect discrimination between classes.
+
 # Resampling
+
 ## 5-Fold Cross Validation
+
 ## Bootstrapping
+```{r}
+statistic <- function(data, indices) {
+  data_sample <- data[indices,]
+  model <- qda(V7 ~ ., data = data_sample)
+  pred_error <- mean((model$fitted.values - data_sample$V7)^2)
+  return(pred_error)
+}
+
+```
+
+```{r}
+statistic(ord_dataset, sample(200, 200, TRUE))
+```
+
+```{r}
+bootstrap_results <- boot(data = ord_dataset, statistic = statistic, R = 1000)
+bootstrap_results
+```
+
+This code should work, however we are faced with rank deficiency errors in the `bad` group which possibly could be resolved with larger amounts of data, however, we did have sufficient time to explore that option.
+
 ## 5-Fold Cross Validation vs Validation Set
-# Conclusion
