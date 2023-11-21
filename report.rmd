@@ -4,12 +4,14 @@ author: Jalal El Zein & Tamer Kobba
 output: html_document
 ---
 # Introduction
+This report will show you the process of making a classification model using logistic regression, LDA, QDA, and k-nearest neighbor supervised learning to predict car acceptability.
 # Data Exploration
 Load the required libraries
 ```{r}
 library(tidyverse)
 library(ggplot2)
 library(polycor)
+library(knitr)
 library(caret)
 library(MASS)
 library(cvms)
@@ -150,6 +152,7 @@ The strong negative correlation of "`Buying_Price`" and "`Estimated_Safety`" wit
 In this section, the dataset was split into training and test sets using a random seed for reproducibility. Approximately 75% of the data was assigned to the training set, and the remaining 25% constituted the test set. NOTE: We tested multiple splits and one specific seed (965) which we found by chance to get give us suspiciously perfect prediction of all different models our findings were documented as well on a spreadsheet that we included
 
 ```{r}
+data <- read.csv("DataAssign2.csv")
 set.seed(123)
 data$V7_binary <- ifelse(data$V7 == 'good', 1, 0)
 train_indices <- sample(1:nrow(data), nrow(data) * 0.75)
@@ -240,11 +243,12 @@ These findings collectively suggest that the logistic regression model performed
 We will try 2 methods under this technique, Linear Discriminant Analysis (LDA) and Quadratic Discriminant Analysis (QDA).
 
 ## Linear Discriminant Analysis
+Linear Discriminant Analysis (LDA) is a statistical method used for classification problems. It operates on the assumption that observations from each class are normally distributed and share the same covariance matrix. LDA finds the mean of all training observations from each class and uses these values to classify new observations
 ### One-Hot Encoding Scheme
 First, we must encode our dataset to feed into the model. In this first part, we will resort to one-hot encoding.
 We will perform our encoding using the `dummyVars` function from `caret`.
 ```{r}
-cat_dataset <- dummyVars("~ . - Acceptability - Number_of_Doors - Capacity", data = data)
+cat_dataset <- dummyVars("~ . - V7 - V3 - V4", data = data)
 enc_dataset <- data.frame(predict(cat_dataset, data))
 ```
 In this code chunk, we apply `dummyVars` to encode all features from our raw dataset excluding the response variable `V7` and the two non-important features, `V3` and `V4`. After that we simply assign the results of these encodings to a new dataset variable.
@@ -258,8 +262,8 @@ Next, we will create separate variables for training and testing data for clarit
 ```{r}
 train_data_X <- enc_dataset[train_indices,]
 test_data_X <- enc_dataset[-train_indices,]
-train_data_Y <- data$Acceptability[train_indices]
-test_data_Y <- data$Acceptability[-train_indices]
+train_data_Y <- data$V7[train_indices]
+test_data_Y <- data$V7[-train_indices]
 ```
 Now we fit the model using the `lda` function, passing in `train_data_Y` and `train_data_X`, then examining a summary of the model
 ```{r}
@@ -287,7 +291,7 @@ Let's examine in detail some metrics for this fit:
 ```{r}
 lda_confusion_matrix$`Balanced Accuracy`
 ```
-We can see our model displays an accuracy of `95.83%` which is great.
+We can see our model displays an accuracy of `95.83%` which is great. This is due to the high proportion of True Positives and True Negatives our model achieves.
 We can also check out our Precision (Sensitivity) and Recall (Specificity), as well as their harmonic mean, the F1 Score
 ```{r}
 print(lda_confusion_matrix$Sensitivity)
@@ -299,13 +303,13 @@ print(lda_confusion_matrix$F1)
 We should also try alternate encoding schemes, such as ordinal encoding, where we assume categories have a natural order. This assumption holds true in this dataset, which is why we may use this encoding. We can perform this encoding using a combination of `factor` and `as.numeric` on our row data, one column at a time.
 ```{r}
 ord_dataset <- data
-ord_dataset$V1 <- as.numeric(factor(data$Buying_Price))
-ord_dataset$V2 <- as.numeric(factor(data$Maintenance_Price))
-ord_dataset$V3 <- as.numeric(factor(data$Number_of_Doors))
-ord_dataset$V4 <- as.numeric(factor(data$Capacity))
-ord_dataset$V5 <- as.numeric(factor(data$Luggage_Boot_Size))
-ord_dataset$V6 <- as.numeric(factor(data$Estimated_Safety))
-ord_dataset$V7 <- data$Acceptability
+ord_dataset$V1 <- as.numeric(factor(data$V1))
+ord_dataset$V2 <- as.numeric(factor(data$V2))
+ord_dataset$V3 <- as.numeric(factor(data$V3))
+ord_dataset$V4 <- as.numeric(factor(data$V4))
+ord_dataset$V5 <- as.numeric(factor(data$V5))
+ord_dataset$V6 <- as.numeric(factor(data$V6))
+ord_dataset$V7 <- data$V7
 ```
 ```{r}
 ord_data_X <- ord_dataset[c("V1", "V2", "V5", "V6")] # pick features here
@@ -328,6 +332,8 @@ lda_ord_confusion_matrix <- cvms::confusion_matrix(targets = lda_ord_classes, pr
 plot_confusion_matrix(lda_ord_confusion_matrix$`Confusion Matrix`[[1]])
 ```
 
+We see here a slight increase in our False Negatives and an increase in our False Positives.
+
 Let's examine in detail some metrics for this fit:
 ```{r}
 lda_ord_confusion_matrix$`Balanced Accuracy`
@@ -341,6 +347,7 @@ print(lda_ord_confusion_matrix$F1)
 We see the different encodings had a significant impact on LDA's performance as we notice a drop in all metrics by approximately 14% on average.
 
 ## Quadratic Discriminant Analysis
+Quadratic Discriminant Analysis (QDA) is an extension of LDA. Like LDA, QDA also assumes that observations from each class are normally distributed. However, it does not assume that each class shares the same covariance matrix. Instead, QDA assumes that each class has its own covariance matrix, making it a more flexible classifier than LDA. QDA is generally preferred when it's unlikely that the classes share a common covariance matrix
 
 ### One-Hot Encoding
 For QDA, using one-hot encoding resulted in rank deficiencies in the dataset and prevented the model for fitting
@@ -371,6 +378,8 @@ Now we can create the confusion matrix as usual
 qda_confusion_matrix <- cvms::confusion_matrix(targets = qda_pred_classes, predictions = actual)
 plot_confusion_matrix(qda_confusion_matrix$`Confusion Matrix`[[1]])
 ```
+
+We can notice a very small proportion of observations actually fall into False predictions (only 3 observations)
 
 Here are the metrics for this model:
 ```{r}
@@ -515,30 +524,75 @@ In the pre-processing step, we transformed categorical predictors into dummy var
 
 ## 5-Fold Cross Validation
 ```{r}
-cv_res <- cv.glm(V7 ~ ., data=data, K=5)
-cv_res
+data$V7_binary <- ifelse(data$V7 == 'good', 1, 0)
+
+formula <- V7_binary ~ V6 + V2 + V1 + V5
+
+# Initialize vectors to store results
+lambda_values <- seq(0, 1, by = 0.1)
+cv_errors <- rep(0, length(lambda_values))
+
+# Perform 5-fold cross-validation
+for (i in seq_along(lambda_values)) {
+  # Update the formula with a penalty term
+  formula_with_penalty <- update(formula, . ~ .)
+
+  # Fit the logistic regression model
+  logit_model <- glm(formula_with_penalty, data = data, family = binomial)
+
+  # Perform 5-fold cross-validation
+  cv_results <- cv.glm(data, logit_model, K = 5)
+
+  # Store the cross-validated error
+  cv_errors[i] <- cv_results$delta[1]
+}
+# Identify the lambda value with the minimum cross-validated error
+min_error_index <- which.min(cv_errors)
+min_error_lambda <- lambda_values[min_error_index]
+
+# Validation set approach
+set.seed(456)  # Set a different seed for reproducibility
+train_indices <- sample(1:nrow(data), nrow(data) * 0.75)
+train_data <- data[train_indices, ]
+validation_data <- data[-train_indices, ]
+
+# Fit the logistic regression model on the training set with the optimal lambda
+optimal_model <- glm(formula, data = train_data, family = binomial)
+# Predict on the validation set
+validation_predictions <- predict(optimal_model, newdata = validation_data, type = "response")
+
+# Convert probabilities to class predictions (0 or 1)
+validation_predicted_classes <- ifelse(validation_predictions > 0.5, 1, 0)
+
+# Calculate error on the validation set
+validation_error <- mean(validation_predicted_classes != validation_data$V7_binary)
+
+# Compare errors
+cat("Mean Cross-validated Error:", mean(cv_errors), "\n")
+cat("Validation Set Error:", validation_error, "\n")
 ```
 
 ## Bootstrapping
-```{r}
-statistic <- function(data, indices) {
-  data_sample <- data[indices,]
-  model <- qda(V7 ~ ., data = data_sample)
-  pred_error <- mean((model$fitted.values - data_sample$V7)^2)
-  return(pred_error)
-}
+Bootstrapping is a statistical method that involves resampling with replacement from the original sample to generate a large number of resamples.
+We will perform Bootstrapping on the Logistic Regression model as well since it performs very well and still shows room for possible improvement.
 
+```{r}
+boot_func <- function(data, index)
+        coef(model)
 ```
 
 ```{r}
-statistic(ord_dataset, sample(200, 200, TRUE))
+boot_func(data, sample(200, 200, replace = TRUE))
 ```
 
 ```{r}
-bootstrap_results <- boot(data = ord_dataset, statistic = statistic, R = 1000)
-bootstrap_results
+boot(data, boot_func, 1000)
 ```
 
-This code should work, however we are faced with rank deficiency errors in the `bad` group which possibly could be resolved with larger amounts of data, however, we did have sufficient time to explore that option.
+We can see bootstrapping estimates our errors to 0 on all coefficients which aligns with our results when setting our seed to `965` as is visible in the spreadsheet attached alongside this file, in which we obtained perfect and almost perfect models for most configurations and models.
 
 ## 5-Fold Cross Validation vs Validation Set
+k-Fold Cross Validation is generally considered a very good estimate for test error and it tends to provide a more robust estimate of model performance as it makes use of all the data for training and testing multiple times. The Validation Set approach can be less computationally intensive than cross-validation, but it may not provide as accurate an estimate of model performance, especially when the validation set is small or not representative of the overall data, which is the case in this instance.
+
+# Conclusion
+All our models (in one configuration or another) performed really well on this dataset. Some worked too well, but that could be attributed to the small sample size of data we have to test and train in general. We say common trends between models, mainly KNN performing well because it's a flexible model, and QDA performing more consistently well across configurations than LDA and LR. We also tested resampling methods like bootstrapping and 5-Fold Cross Validation which confirmed many of our hypotheses about the data.
