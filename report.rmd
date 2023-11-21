@@ -419,6 +419,28 @@ data_dummy <- data.frame(predict(data_dummy, newdata = selected_columns))
 # Display the structure of the new data frame
 str(data_dummy)
 
+# Set seed for reproducibility
+set.seed(123)
+
+# Define the sample size for training data
+samplesize1 <- round(0.75 * nrow(data_dummy), 0)
+
+# Create indices for training data
+index1 <- sample(seq_len(nrow(data_dummy)), size = samplesize1)
+
+
+
+# Create training and testing datasets
+kn_train <- data_dummy[index1, ]
+
+str(kn_train)
+
+kn_test <- data_dummy[-index1, ]
+
+
+# Create training and testing labels (response variable V7)
+kn_train_label <- selected_columns$V7[index1]
+kn_test_label <- selected_columns$V7[-index1]
 ```
 
 ## Data Splitting
